@@ -164,6 +164,10 @@ def dismiss_overlays(serial, rounds=8):
             run(["shell", "input", "keyevent", "4"], serial=serial)
             time.sleep(2)
             continue
+        if "SplashActivity" in focus:
+            # 开屏页尚未结束，等它自己进主页，不要按返回（会退出应用）
+            time.sleep(3)
+            continue
         break
 
 

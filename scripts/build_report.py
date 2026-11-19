@@ -30,6 +30,16 @@ header p{margin:0;color:#B7C8C3;font-size:14px}
 .meta{display:flex;flex-wrap:wrap;gap:8px 22px;margin-top:14px;font-size:12.5px;color:#9FB4AE}
 .meta b{color:#DCE9E5;font-weight:600}
 .note{background:#FFF8E9;border:1px solid #F0DFB8;border-radius:8px;padding:10px 14px;margin:18px 0 0;font-size:13px;color:#6B5318}
+.cov{background:var(--surface);border:1px solid var(--rule);border-radius:10px;padding:14px 16px;margin:18px 0 0}
+.cov h3{margin:0 0 8px;font-size:15px}
+.cov .stats{display:flex;gap:16px;flex-wrap:wrap;font-size:12.5px;color:#33424C}
+.cov .stats b{font-size:19px;color:var(--accent);margin-right:4px}
+.cov .miss{margin-top:10px;font-size:12.5px}
+.cov table{width:100%;border-collapse:collapse;margin-top:8px;font-size:12.5px}
+.cov th,.cov td{text-align:left;padding:5px 8px;border-top:1px solid #F0ECE4;vertical-align:top}
+.cov .st-blocked{color:#9A4718;font-weight:700}
+.cov .st-failed{color:#992019;font-weight:700}
+.cov .st-untested{color:#78868F;font-weight:700}
 nav{position:sticky;top:0;z-index:9;background:rgba(251,250,247,.95);backdrop-filter:blur(6px);border-bottom:1px solid var(--rule);padding:10px 0}
 nav .wrap{display:flex;gap:8px;flex-wrap:wrap}
 nav a{font-size:12.5px;padding:4px 10px;border:1px solid var(--rule);border-radius:999px;color:#3E4C56;background:#fff}
@@ -370,6 +380,36 @@ def main():
     if notes:
         note_html = '<div class="note">判定依据（本轮口径，可在待确认区调整）：' + "；".join(html.escape(n) for n in notes) + "</div>"
 
+    coverage = data.get("coverage") or {}
+    cov_items = coverage.get("items", [])
+    cov_html = ""
+    if cov_items or coverage.get("total"):
+        total = coverage.get("total") or len(cov_items)
+        tested = coverage.get("tested")
+        if tested is None:
+            tested = sum(1 for i in cov_items if i.get("status") == "tested")
+        blocked = coverage.get("blocked")
+        if blocked is None:
+            blocked = sum(1 for i in cov_items if i.get("status") == "blocked")
+        failed = coverage.get("failed")
+        if failed is None:
+            failed = sum(1 for i in cov_items if i.get("status") == "failed")
+        untested = max(0, total - tested - blocked - failed)
+        rest = [i for i in cov_items if i.get("status") != "tested"]
+        rows = "".join(
+            f'<tr><td>{html.escape(i.get("name", ""))}</td>'
+            f'<td class="st-{html.escape(i.get("status", "untested"))}">{html.escape({"blocked": "受阻", "failed": "失败", "untested": "未测"}.get(i.get("status"), i.get("status", "")))}</td>'
+            f'<td>{html.escape(i.get("note", ""))}</td></tr>'
+            for i in rest
+        )
+        miss = ("<div class='miss'><b>未测/受阻清单</b><table><tr><th>功能</th><th>状态</th><th>原因 / 证据</th></tr>"
+                + rows + "</table></div>") if rest else "<div class='miss'>功能地图条目已全部执行，无未测项。</div>"
+        cov_html = (f'<div class="cov" id="coverage"><h3>覆盖台账 <small>（功能地图逐条执行）</small></h3>'
+                    f'<div class="stats"><span><b>{tested}</b>/ {total} 已测</span>'
+                    f'<span><b>{blocked}</b> 受阻</span><span><b>{failed}</b> 失败</span>'
+                    f'<span><b>{untested}</b> 未测</span></div>{miss}</div>')
+        nav_links.insert(0, '<a href="#coverage">覆盖台账</a>')
+
     key = "flowtest-" + (app.get("package") or os.path.basename(root)) + "-v1"
 
     page = f"""<!DOCTYPE html>
@@ -392,6 +432,7 @@ def main():
 <nav><div class="wrap">{"".join(nav_links)}</div></nav>
 <div class="wrap">
   {note_html}
+  {cov_html}
   {"".join(body_sections)}
   {ok_html}
 </div>
@@ -408,7 +449,9 @@ def main():
 
     counts = {sid: len(sections[sid].get("items", [])) for sid in ["c1", "c2", "c3"]}
     print(json.dumps({"out": os.path.abspath(a.out), "size": os.path.getsize(a.out),
-                      "counts": counts, "ok": len(ok_items)}, ensure_ascii=False, indent=2))
+                      "counts": counts, "ok": len(ok_items),
+                      "coverage": {k: coverage.get(k) for k in ("total", "tested", "blocked", "failed")} if coverage else None},
+                     ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":
