@@ -162,7 +162,12 @@ python <skill目录>\scripts\flowtest.py flow --url http://127.0.0.1:8787/ --roo
 python <skill目录>\scripts\flowtest.py step --root <run> --step r01 --label "启动-首屏" --wait 6
 ```
 
-支持 `--tap X Y` / `--swipe X1 Y1 X2 Y2` / `--key KEYCODE_BACK` / `--no-ui`。Toast 短暂提示必须截图；UI 树抓取失败会重试 3 次并记 `ui_ok:false`。
+支持 `--tap X Y` / `--tap-text 文字` / `--swipe X1 Y1 X2 Y2` / `--key KEYCODE_BACK` / `--no-ui` / `--launch 包名`。
+
+- `--tap` 内部用 120ms 同点按压，兼容 Flutter/游戏化自绘 UI；`--tap-text 我的` 会自动 dump 当前界面、按 text/content-desc 找节点并点中心，比手写坐标稳（同名标题优先点面积更小的节点；底部 Tab 的文字节点若是 0 尺寸，会回溯到 Tab 容器）。
+- `--launch 包名` 会启动应用并自动关闭开屏广告/促销弹窗（支持「跳过/关闭/×」文字与 `iv_close`/`btn_close` 类资源 id）；加 `--cold` 先 force-stop 保证冷启动。广告层数多时用 `--dismiss-rounds` 加大轮数。
+- `--step` 可带层级（如 `m1\a`），落盘文件名会自动 slug 化，不会因为反斜杠丢截图。
+- Toast 短暂提示必须截图；UI 树抓取失败会重试 3 次并记 `ui_ok:false`。
 
 ## 阶段 3 · 生成报告
 
@@ -217,10 +222,12 @@ python <skill目录>\scripts\flowtest.py report --run <run> --issues <run>\work\
 
 ## 实测常见坑（跨项目通用）
 
-- **Android 点击坐标**：底部 Tab / 图标区常只有图标或文字窄条可点。`--tap` 无效时先 `uiautomator dump`，取目标节点的 `bounds` 中心再点，不要按截图比例猜。
+- **Android 点击坐标**：优先用 `--tap-text 文字` 让脚本自己找节点中心；只能手写坐标时，底部 Tab / 图标区要先 dump 取 `bounds` 中心，不要按截图比例猜。
+- **应用会恢复上次页面**：`monkey` 启动可能直接回到上次停留的页面（如反馈页、记账录入页）。取证第一屏必须用 `--launch 包名 --cold`，否则会把「上次页面」当成首页。
+- **冷启动可能撞上隐私协议/登录门**：部分应用清进程后会先弹「同意协议」或要求重新登录（如 Z有钱 的「一键登录」）。协议不要默认替用户勾选；登录需要用户提供账号或人工完成，先把这一步记进 run 的 note，再继续已解锁的页面。
 - **`--swipe` 只接受 4 个参数**：`X1 Y1 X2 Y2`，没有时长参数；带第 5 个值会直接参数错误。
 - **`adb pull` 到含中文的目录可能报 `cannot create file/directory`**：先 pull 到 `%TEMP%` 再移动，或直接用 `capture.py` 落盘。
-- **Web 自动草稿要限噪**：默认每屏按面积取前 15、同名只留一条、过滤引导/工具条文案，总量上限 120；站点功能特别多时用 `--max-per-screen` 调整，不要把整页按钮当地图。
+- **Web 自动草稿要限噪**：默认每屏按面积取前 15、同名只留一条、过滤引导/工具条/弹层确认文案，总量上限 120；站点功能特别多时用 `--max-per-screen` 调整，不要把整页按钮当地图。登录后站点用 `--storage-state auth.json` 复用登录态，避免每次都只能抓到登录页。
 - **只认界面实测**：静态提取的类名（如 `ConvertActivity`）不能当功能名；启动引导、会员拦截页要先关掉再取主界面。
 - **隐藏的 inert 登录表单**：登录页若 `page.fill` 报 `element is inert`，说明表单是背景副本（`aria-hidden` + `inert`）。先点页面右上角「登录」按钮激活登录面板，再填 `#username`/`#password`；不要直接给背景表单去 inert。
 - **自绘 UI（Flutter / 游戏化）**：`uiautomator dump` 只能读到少量原生文字，其余按钮没有节点。此时以截图为准，按设备实际分辨率（如 720×1600）换算坐标；普通 `adb shell input tap` 偶尔不生效，改用同点 120ms 的 `input swipe x y x y 120` 更稳。

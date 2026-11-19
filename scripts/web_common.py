@@ -188,11 +188,12 @@ def parse_viewport(text):
 
 
 class WebSession:
-    def __init__(self, root, base_url, viewport=(1440, 960), headless=True):
+    def __init__(self, root, base_url, viewport=(1440, 960), headless=True, storage_state=None):
         self.root = os.path.abspath(root)
         self.base_url = base_url.rstrip("/") + "/" if base_url else ""
         self.viewport = viewport
         self.headless = headless
+        self.storage_state = storage_state
         self.profile = os.path.join(self.root, "work", "browser-profile")
         self.shots = os.path.join(self.root, "outputs", "screenshots")
         self.ui_dir = os.path.join(self.root, "work", "ui")
@@ -200,6 +201,7 @@ class WebSession:
         self.console_errors = []
         self.dialogs = []
         self._pw = None
+        self._browser = None
         self.context = None
         self.page = None
 
@@ -208,12 +210,17 @@ class WebSession:
             os.makedirs(d, exist_ok=True)
         self._pw = sync_playwright().start()
         exe = pick_browser()
-        kwargs = dict(headless=self.headless, viewport={"width": self.viewport[0], "height": self.viewport[1]},
-                      locale="zh-CN", device_scale_factor=1)
+        context_kwargs = dict(viewport={"width": self.viewport[0], "height": self.viewport[1]},
+                              locale="zh-CN", device_scale_factor=1)
+        launch_kwargs = dict(headless=self.headless)
         if exe:
-            kwargs["executable_path"] = exe
+            launch_kwargs["executable_path"] = exe
         try:
-            self.context = self._pw.chromium.launch_persistent_context(self.profile, **kwargs)
+            if self.storage_state:
+                self._browser = self._pw.chromium.launch(**launch_kwargs)
+                self.context = self._browser.new_context(storage_state=self.storage_state, **context_kwargs)
+            else:
+                self.context = self._pw.chromium.launch_persistent_context(self.profile, **context_kwargs, **launch_kwargs)
         except Exception as e:
             raise SystemExit(f"浏览器启动失败：{e}\n可执行 python -m playwright install chromium 后重试")
         self.page = self.context.pages[0] if self.context.pages else self.context.new_page()

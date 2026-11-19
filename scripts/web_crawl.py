@@ -23,6 +23,9 @@ from web_common import ITEMS_JS, NAV_JS, WebSession, parse_viewport
 NOISE = {
     "×", "x", "关闭", "收起", "展开", "返回", "上一步", "下一步", "下载", "上传", "删除", "清空",
     "处理中", "加载中", "确定", "取消", "保存", "提交", "登录", "退出", "更多", "复制", "重试",
+    "我知道了", "知道了", "我明白了", "明白了", "同意", "不同意", "接受", "拒绝", "稍后再说", "以后再说",
+    "已保存", "保存中", "保存成功", "已复制", "复制成功", "加载完成",
+    "立即注册 / 登录", "登录 / 注册", "注册 / 登录", "立即登录",
 }
 # 引导/营销/工具条类文案，不是功能入口（各站点通用，不绑定具体站点）
 GUIDE_RE = re.compile(
@@ -86,6 +89,7 @@ def main():
     ap.add_argument("--max-links", type=int, default=10, help="无导航时最多跟随多少个同源链接")
     ap.add_argument("--max-per-screen", type=int, default=15, help="每屏最多收录多少个功能候选（按面积优先）")
     ap.add_argument("--max-features", type=int, default=120, help="地图总条目上限")
+    ap.add_argument("--storage-state", help="Playwright 登录态 auth.json 路径，用于登录后站点")
     a = ap.parse_args()
 
     out_yaml = os.path.abspath(a.out)
@@ -94,7 +98,8 @@ def main():
         os.makedirs(os.path.join(root, d), exist_ok=True)
 
     screens = []
-    with WebSession(root, a.url, parse_viewport(a.viewport), headless=not a.headed) as sess:
+    with WebSession(root, a.url, parse_viewport(a.viewport), headless=not a.headed,
+                    storage_state=a.storage_state) as sess:
         sess.goto("", wait=1.0)
         nav = sess.page.evaluate(NAV_JS)
         all_entries = nav.get("items", [])
