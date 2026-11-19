@@ -222,4 +222,7 @@ python <skill目录>\scripts\flowtest.py report --run <run> --issues <run>\work\
 - **`adb pull` 到含中文的目录可能报 `cannot create file/directory`**：先 pull 到 `%TEMP%` 再移动，或直接用 `capture.py` 落盘。
 - **Web 自动草稿要限噪**：默认每屏按面积取前 15、同名只留一条、过滤引导/工具条文案，总量上限 120；站点功能特别多时用 `--max-per-screen` 调整，不要把整页按钮当地图。
 - **只认界面实测**：静态提取的类名（如 `ConvertActivity`）不能当功能名；启动引导、会员拦截页要先关掉再取主界面。
+- **隐藏的 inert 登录表单**：登录页若 `page.fill` 报 `element is inert`，说明表单是背景副本（`aria-hidden` + `inert`）。先点页面右上角「登录」按钮激活登录面板，再填 `#username`/`#password`；不要直接给背景表单去 inert。
+- **自绘 UI（Flutter / 游戏化）**：`uiautomator dump` 只能读到少量原生文字，其余按钮没有节点。此时以截图为准，按设备实际分辨率（如 720×1600）换算坐标；普通 `adb shell input tap` 偶尔不生效，改用同点 120ms 的 `input swipe x y x y 120` 更稳。
+- **广告密集的应用**：启动后可能连续出现开屏广告、信息流广告和促销弹窗，且关闭按钮在右上角；先逐个点「× / 跳过」再取主界面。部分广告会直接跳到外部落地页（如应用商店、抖音下载页），发现 `mCurrentFocus` 不是目标包名时先 `am force-stop` 再重启。
 

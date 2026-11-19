@@ -190,8 +190,20 @@ def main():
         add(t["text"], f"{region}工具 > {t['text']}",
             f"点击{region}工具按钮「{t['text']}」")
 
+    from collections import defaultdict
+
     for s in screens:
         label = s["nav"]["text"]
+        # 重复的大尺寸卡片通常是作品/商品内容，不是功能入口，先整体识别再排除
+        groups = defaultdict(list)
+        for it in s["items"]:
+            box = it.get("box") or [0, 0, 0, 0]
+            if max(0, box[2]) * max(0, box[3]) >= 20000:
+                groups[(round(box[2] / 20), round(box[3] / 20))].append(it)
+        card_texts = set()
+        for arr in groups.values():
+            if len(arr) >= 6:
+                card_texts |= {re.sub(r"\s+", " ", it["text"]).strip() for it in arr}
         # 按面积从大到小取每屏最显眼的候选，避免把整页按钮都收进来
         cand = []
         for it in s["items"]:
@@ -202,7 +214,7 @@ def main():
                     continue
                 cand.append((0, name, f"{label} > 表单", f"进入「{label}」> 填写「{name}」"))
                 continue
-            if not is_feature_text(text):
+            if not is_feature_text(text) or text in card_texts or text.startswith("查看 "):
                 continue
             box = it.get("box") or [0, 0, 0, 0]
             area = max(0, box[2]) * max(0, box[3])
