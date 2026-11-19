@@ -1,11 +1,28 @@
 ---
 name: app-flowtest
-description: 通用产品功能流程测试（Web 网页 / 本地项目 URL / 静态页面 / Android APK）。按固定四阶段执行：生成功能地图（feature-map.yaml）→ 逐功能测试并逐步截图取证 → 生成可勾选确认的 issues-report.html → 交用户确认。用户要求「测这个站点 / 测本地项目 / 测这个 APK / 走一遍功能 / 出问题清单 / 截图留证」时使用。
+description: 通用产品功能流程测试（Web 网页 / 本地项目 URL / 静态页面 / Android APK）。按固定四阶段执行：先用 feature-map 技能获取/校验功能地图（feature-map.yaml）→ 按地图逐功能真机/浏览器测试并逐步截图取证 → 每个被测对象单独生成可勾选确认的 issues-report.html → 交用户确认。用户要求「测这个站点 / 测本地项目 / 测这个 APK / 走一遍功能 / 出问题清单 / 截图留证」时使用。
 ---
 
 # 通用功能流程测试
 
 固定四阶段，**不允许跳阶段**：功能地图没生成，不开测；每一步没有截图，不算测过。
+
+## 与 feature-map 技能的协作（先取地图，再测）
+
+本 skill 不另造一套功能定义，**阶段 1 优先复用 feature-map 技能的地图**：
+
+1. 先找现成地图：`<项目根>/feature-map.yaml`，或 Web 站点的 `sites/<域名>/feature-map.yaml`（查询时 `fmap.py --site <域名>`）。
+2. 用 feature-map 技能读取并校验：
+
+```powershell
+python <feature-map skill目录>\scripts\fmap.py --list --data <项目根>\feature-map.yaml
+python <feature-map skill目录>\scripts\fmap.py --check --data <项目根>\feature-map.yaml
+```
+
+3. 校验通过后，把地图快照复制为 `<run>/feature-map.yaml`，并在 `work/env.json` / `notes` 记录地图来源与取证日期；测试用例按地图条目逐条执行（`name` 就是用例名，`where/how` 就是操作路径）。
+4. 没有现成地图时，才用本 skill 的 `map` 命令生成草稿；补全后写回项目根（或 `sites/<域名>/`），并用 `fmap.py --check` 验证，不能只留在 `<run>/`。
+5. 实测发现地图里没有的功能，回填到 feature-map（补 `name/aliases/where/how`），保持地图与测试同步。
+6. 两份产出分工：feature-map 记录「在哪里、怎么打开」；`issues-report.html` 记录「实际行为、问题与证据」，且**一个被测对象一份报告**。
 
 同一套流程覆盖两类目标：
 
@@ -70,6 +87,8 @@ Android 依赖：adb 可用、设备在线（多设备用 `--serial`）、`andro
 
 ## 阶段 1 · 生成功能地图
 
+**先复用 feature-map 技能的地图**：项目根已有 `feature-map.yaml`（Web 也可用 `sites/<域名>/` 内置地图）时，直接用 `fmap.py --list` / `--check` 读取校验并复制到 `<run>/feature-map.yaml`，不要重复抓一遍。只有没有地图或地图明显过期时，才执行下面的草稿生成：
+
 ```powershell
 # Web：自动遍历导航/同源链接，抓入口、按钮、表单，产出草稿
 python <skill目录>\scripts\flowtest.py map --url http://127.0.0.1:8787/ --out <run>\feature-map.yaml
@@ -87,7 +106,7 @@ Web 自动遍历默认最多 30 个入口；纯多页站点（无导航容器）
 2. 按「进入 → 操作 → 看结果 → 退出」走通主流程，把 `how` 改成真实点击路径（格式 `A > B > C`）。
 3. 自动遍历只覆盖导航一级页；二级页面/弹窗（如「开始创作 → 大纲 → 出图」、详情弹窗、上传/下载）需手动进入后补进地图。
 4. 地图至少覆盖：首页/启动、每个导航 Tab、每个二级页面/弹窗、工具与设置入口、表单提交、下载/导入导出、退出路径。
-5. 最终地图同时保留在 `<run>/feature-map.yaml` 与项目根目录，供 feature-map 技能查询。
+5. 最终地图以项目根目录（Web 可放 `sites/<域名>/`）为唯一事实来源，`<run>/feature-map.yaml` 只是本次测试的快照；两份都按 feature-map 格式维护。
 
 字段：`name`（界面上的真实名称）、`where`（功能位置）、`how`（怎么点开）、`aliases`（可选，同义词）。
 
