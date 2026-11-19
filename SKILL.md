@@ -32,6 +32,8 @@ description: 通用产品功能流程测试（Web 网页 / 本地项目 URL / �
 
 ## 产物目录约定
 
+**硬性规则：一个被测对象一份报告。** 一个 App 或一个网站对应一个 `<run>/`、一份 `issues.json`、一份 `issues-report.html`。用户一次给多个包或多个网址时，必须按对象拆成多个 run 分别测试、分别出报告，**禁止把多个 App/网站混进同一份报告**；报告标题和 `app` 字段只写当前对象。
+
 以目标短名建目录（示例 `D:\功能测试\<日期>\<slug>\`）：
 
 ```
@@ -170,6 +172,8 @@ python <skill目录>\scripts\flowtest.py step --root <run> --step r01 --label "�
 - Toast 短暂提示必须截图；UI 树抓取失败会重试 3 次并记 `ui_ok:false`。
 
 ## 阶段 3 · 生成报告
+
+**每个 App / 网站单独生成一份报告**：批量测试时先按对象拆分 run，再逐个生成；不要把多个对象的条目合并到同一个 `issues.json`。报告生成后逐个交付，不打包成一份汇总。
 
 把判定结果写入 `work/issues.json`，然后：
 
