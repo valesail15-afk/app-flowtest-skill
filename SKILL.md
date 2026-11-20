@@ -1,23 +1,42 @@
 ---
 name: app-flowtest
-description: 通用产品功能流程测试（Web 网页 / 本地项目 URL / 静态页面 / Android APK）。按固定四阶段执行：先用 feature-map 技能获取/校验功能地图（feature-map.yaml）→ 按地图逐功能真机/浏览器测试并逐步截图取证 → 每个被测对象单独生成可勾选确认的 issues-report.html → 交用户确认。用户要求「测这个站点 / 测本地项目 / 测这个 APK / 走一遍功能 / 出问题清单 / 截图留证」时使用。
+description: 通用产品功能流程测试（Web 网页 / 本地项目 URL / 静态页面 / Android APK），内置功能地图查询（fmap.py）。按固定四阶段执行：先用 fmap.py 获取/校验功能地图（feature-map.yaml）→ 按地图逐功能真机/浏览器测试并逐步截图取证 → 每个被测对象单独生成可勾选确认的 issues-report.html → 交用户确认。用户要求「测这个站点 / 测本地项目 / 测这个 APK / 走一遍功能 / 出问题清单 / 截图留证」，或问「某功能在哪个菜单/页面、怎么点开」时使用。
 ---
 
 # 通用功能流程测试
 
 固定四阶段，**不允许跳阶段**：功能地图没生成，不开测；每一步没有截图，不算测过。
 
-## 与 feature-map 技能的协作（先取地图，再测）
+## 功能地图（内置 fmap.py，先取地图再测）
 
-本 skill 不另造一套功能定义，**阶段 1 优先复用 feature-map 技能的地图**：
+本 skill 自带 `scripts/fmap.py` 和站点地图 `sites/<域名>/feature-map.yaml`，**不依赖外部 skill**；它同时用来回答「功能在哪里、怎么打开」。
 
-1. 先找现成地图：`<项目根>/feature-map.yaml`，或 Web 站点的 `sites/<域名>/feature-map.yaml`（查询时 `fmap.py --site <域名>`）。
-2. 用 feature-map 技能读取并校验：
+数据定位顺序（不依赖安装路径）：
+
+1. `--data <路径>`
+2. `--site <域名>`（读 `<skill目录>/sites/<域名>/feature-map.yaml`，也接受完整 URL）
+3. 环境变量 `FEATURE_MAP_FILE`
+4. 从当前工作目录向上逐级查找 `feature-map.yaml`
 
 ```powershell
-python <feature-map skill目录>\scripts\fmap.py --list --data <项目根>\feature-map.yaml
-python <feature-map skill目录>\scripts\fmap.py --check --data <项目根>\feature-map.yaml
+# 查询某个功能（输出「功能在哪里」「怎么打开」两行）
+python <skill目录>\scripts\fmap.py 设为壁纸
+# 多关键词 / 全部匹配 / 列出全图 / 自检
+python <skill目录>\scripts\fmap.py 我的 收藏
+python <skill目录>\scripts\fmap.py 会员 --all
+python <skill目录>\scripts\fmap.py --list --data <项目根>\feature-map.yaml
+python <skill目录>\scripts\fmap.py --check --data <项目根>\feature-map.yaml
+# 查询内置站点地图
+python <skill目录>\scripts\fmap.py 充值 --site hy.ithinkai.cn
 ```
+
+- 命中输出「功能在哪里」「怎么打开」两行；未命中标准错误输出「未找到匹配的功能：X」，退出码 1；找不到数据文件退出码 2。
+- 地图格式、增改与自检规范见仓库根目录 `FEATURE-MAP.md`，示例见 `examples/`。
+
+阶段 1 优先复用已有地图：
+
+1. 先找现成地图：`<项目根>/feature-map.yaml`，或 Web 站点的 `sites/<域名>/feature-map.yaml`。
+2. 用 `fmap.py --list` / `--check` 读取校验。
 
 3. 校验通过后，把地图快照复制为 `<run>/feature-map.yaml`，并在 `work/env.json` / `notes` 记录地图来源与取证日期；测试用例按地图条目逐条执行（`name` 就是用例名，`where/how` 就是操作路径）。
 4. 没有现成地图时，才用本 skill 的 `map` 命令生成草稿；补全后写回项目根（或 `sites/<域名>/`），并用 `fmap.py --check` 验证，不能只留在 `<run>/`。
@@ -55,7 +74,7 @@ python <feature-map skill目录>\scripts\fmap.py --check --data <项目根>\feat
 
 ```
 <run>/
-  feature-map.yaml            # 阶段 1 产出（同时复制到项目根，供 feature-map 技能查询）
+  feature-map.yaml            # 阶段 1 产出（同时复制到项目根，供 fmap.py 查询）
   work/
     env.json                  # 目标信息（Web：URL/标题/视口/浏览器；Android：设备/包）
     steps.jsonl               # 每步一条记录（capture 追加）
@@ -89,7 +108,7 @@ Android 依赖：adb 可用、设备在线（多设备用 `--serial`）、`andro
 
 ## 阶段 1 · 生成功能地图
 
-**先复用 feature-map 技能的地图**：项目根已有 `feature-map.yaml`（Web 也可用 `sites/<域名>/` 内置地图）时，直接用 `fmap.py --list` / `--check` 读取校验并复制到 `<run>/feature-map.yaml`，不要重复抓一遍。只有没有地图或地图明显过期时，才执行下面的草稿生成：
+**先复用已有地图（`fmap.py`）**：项目根已有 `feature-map.yaml`（Web 也可用 `sites/<域名>/` 内置地图）时，直接用 `fmap.py --list` / `--check` 读取校验并复制到 `<run>/feature-map.yaml`，不要重复抓一遍。只有没有地图或地图明显过期时，才执行下面的草稿生成：
 
 ```powershell
 # Web：自动遍历导航/同源链接，抓入口、按钮、表单，产出草稿
