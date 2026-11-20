@@ -62,6 +62,8 @@ python <feature-map skill目录>\scripts\fmap.py --check --data <项目根>\feat
     ui/<step>.html|.txt|.xml  # 每步页面快照（Web 为 DOM/正文，Android 为 UI 树）
     crawl.json                # Web 阶段 1 自动遍历清单
     issues.json               # 阶段 3 输入（问题/待确认/正常 + 速查项）
+    regression.json           # 回归轮：上一轮问题复测状态（regression.py 维护）
+    coverage.json             # 覆盖率台账（coverage 命令生成）
     browser-profile/          # Web 持久会话（localStorage 跨步骤保留）
     logcat.txt                # Android 测试期间日志
   outputs/
@@ -208,15 +210,69 @@ python <skill目录>\scripts\flowtest.py flow --url http://127.0.0.1:8787/ --roo
 ### Android
 
 ```powershell
-python <skill目录>\scripts\flowtest.py step --root <run> --step r01 --label "启动-首屏" --wait 6
+# 冷启动进入首屏（自动关广告），等首屏文字出现再截图
+python <skill目录>\scripts\flowtest.py step --root <run> --step r01 --label "启动-首屏" ^
+  --launch com.example.app --cold --wait-for "text:首页"
 ```
 
-支持 `--tap X Y` / `--tap-text 文字` / `--swipe X1 Y1 X2 Y2` / `--key KEYCODE_BACK` / `--no-ui` / `--launch 包名`。
+动作参数（**一次只做一个动作**，多动作放多步）：
 
-- `--tap` 内部用 120ms 同点按压，兼容 Flutter/游戏化自绘 UI；`--tap-text 我的` 会自动 dump 当前界面、按 text/content-desc 找节点并点中心，比手写坐标稳（同名标题优先点面积更小的节点；底部 Tab 的文字节点若是 0 尺寸，会回溯到 Tab 容器）。
+| 参数 | 用途 |
+| --- | --- |
+| `--tap X Y` | 绝对坐标点击（点位优先从 UI 树 `bounds` 取） |
+| `--tap-text "文本"` / `--tap-desc "描述"` | 按文本/描述点击，自动取节点中心——**首选** |
+| `--scroll-to "text:xx"` | 向下滚动直到出现目标文本（列表项在屏外时抓不到） |
+| `--wait-for "text:xx"` / `"activity:xx"` / `"id:xx"` / `"package:xx"` | 轮询等待页面就绪（默认 15s、0.6s 间隔），超时打印 `!` |
+| `--wait N` / `--settle N` | 固定等待 / 动作后截图前的稳定期 |
+| `--burst N` / `--burst-interval 0.4` | 连拍抓 Toast/SnackBar（它们常不进 UI 树） |
+| `--clear` / `--input-text` | 清空输入框 / 输入 ASCII 文本 |
+| `--log-grep "正则"` | 抓 logcat 匹配行写入 steps.jsonl，核对接口参数/返回 |
+| `--verdict pass/fail/partial/unverified` | 本步判定，写进 steps.jsonl，报告直接引用 |
+| `--launch 包名` / `--cold` / `--dismiss-rounds N` | 启动并自动关广告 / 保证冷启动 / 加大关广告轮数 |
+| `--no-ui` / `--quiet` | 跳过 UI 树 / 只打印一行摘要 |
+
+测试素材准备（PDF/Office/GIF 等需要从系统文件选择器选文件的功能）：
+
+```powershell
+adb -s <serial> push <本地文件> /sdcard/Download/
+adb -s <serial> shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file:///sdcard/Download/<文件>
+adb -s <serial> shell am force-stop com.android.documentsui   # 必须重启选择器，否则「最近」不刷新
+```
+
+- 顺序固定：先 push + 媒体扫描，**再** force-stop DocumentsUI；反了当前会话仍是旧列表。
+- 选择器里的文件条目常无 text/desc，用「预览“xxx”」节点同一行纵向居中定位，别用固定 y 坐标。
+- 偶发双窗口残留（截图与 UI 树不一致、磁贴点了没反应）时，`am force-stop com.android.documentsui` 后重开。
+
+坐标纪律：
+
+- 截图常被缩放（如 480px 显示 / 720px 实际），**不要按截图目测像素下发 `--tap`**；优先 `--tap-text`，其次用 UI 树 `bounds`。
+- `--tap-text` 报「界面未找到」说明当前页面不是你以为的页面，先看它输出的截图再决定。
+- 页面切换后再次操作前，必须 `--wait-for activity:` 或 `--wait-for text:` 确认落点。
+- 列表/数量类结论（如「标注 8 项实际 4 项」）**必须先滚动到底再判**，首页分区常被折叠。
+
+- `--tap` 内部用 120ms 同点按压，兼容 Flutter/游戏化自绘 UI；`--tap-text` 同名标题优先点面积更小的节点，底部 Tab 的文字节点若是 0 尺寸会回溯到 Tab 容器。
 - `--launch 包名` 会启动应用并自动关闭开屏广告/促销弹窗（支持「跳过/关闭/×」文字与 `iv_close`/`btn_close` 类资源 id）；加 `--cold` 先 force-stop 保证冷启动。广告层数多时用 `--dismiss-rounds` 加大轮数。
 - `--step` 可带层级（如 `m1\a`），落盘文件名会自动 slug 化，不会因为反斜杠丢截图。
-- Toast 短暂提示必须截图；UI 树抓取失败会重试 3 次并记 `ui_ok:false`。
+- Toast 短暂提示必须截图（用 `--burst` 连拍）；UI 树抓取失败会重试 3 次并记 `ui_ok:false`。
+
+## 回归轮（复测上一轮问题）
+
+1. 从上一轮 `issues.json` 生成复测清单：
+
+```powershell
+python <skill目录>\scripts\android\regression.py init --prev <prev-run>\work\issues.json --out <run>\work\regression.json
+python <skill目录>\scripts\android\regression.py list --file <run>\work\regression.json
+```
+
+2. 按清单逐条复测，回填结果（可多次）：
+
+```powershell
+python <skill目录>\scripts\android\regression.py set --file <run>\work\regression.json --id R03 ^
+  --status fixed --evidence "r60 输出 312KB，小于源图 862KB" --step r60
+python <skill目录>\scripts\android\regression.py summary --file <run>\work\regression.json
+```
+
+3. 汇总后写入 `issues.json`：已修复的进 `fixed`，仍存在/复发的进 `sections.c1`，关键指标在 `compare` 里对照上一轮。
 
 ## 阶段 3 · 生成报告
 
@@ -235,6 +291,8 @@ python <skill目录>\scripts\flowtest.py report --run <run> --issues <run>\work\
   "kicker": "功能测试 · 取证清单",
   "app": { "package": "站点或包名", "version": "版本", "device": "设备/浏览器", "os": "系统", "date": "" },
   "notes": ["用户确认的业务规则 1", "规则 2"],
+  "compare": [ { "label": "压缩输出体积", "prev": "865KB（未压缩）", "now": "312KB" } ],
+  "fixed": [ { "path": "r60 · 图片压缩", "title": "已修复项标题", "desc": "本轮复测确认的行为", "images": ["outputs/screenshots/r60_xx.png"] } ],
   "sections": [
     { "id": "c1", "title": "确认问题", "items": [
       { "path": "r20 · 壁纸详情", "title": "问题标题", "desc": "实际表现，可用 **加粗** 标关键值",
@@ -251,6 +309,7 @@ python <skill目录>\scripts\flowtest.py report --run <run> --issues <run>\work\
 报告硬性要求（脚本已实现，不要手改 HTML）：
 
 - 三个分区：确认问题 / 待确认 / 正常功能，外加「正常功能速查」缩略图。
+- 回归轮可加「已修复」分区（`fixed`）与顶部「对比项」表（`compare`），对照上一轮。
 - **每条都有「功能正确」勾选**：问题区勾选 → 移入正常功能；正常区取消勾选 → 移回问题列表；速查项也支持反向标记。
 - 勾选状态 localStorage 持久化，计数与导航实时联动。
 - 截图 base64 内嵌，报告单文件可直接打开。

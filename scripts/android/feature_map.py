@@ -79,6 +79,36 @@ def static_scan(apk_path, extra_prefixes=()):
     return info
 
 
+ROUTE_KINDS = (
+    ("会员/支付", ("vip", "pay", "order", "redeem", "benefit")),
+    ("登录/账号", ("auth", "login", "register", "password", "sms", "profile")),
+    ("壁纸/内容", ("wallpaper", "category", "categor", "discover", "home", "search", "media", "video")),
+    ("收藏/历史", ("favorite", "library", "history")),
+    ("设置/反馈", ("setting", "feedback", "report")),
+    ("信息/协议", ("legal", "about", "policy", "agreement", "onboarding")),
+)
+
+
+def is_noise_route(route):
+    """混淆后的短路由（/a1、/c7、/trk、/w1）不是可用入口，只保留作参考。"""
+    name = route.strip("/")
+    if "/" in name or not name:
+        return False
+    if name.endswith("_"):
+        return True
+    return len(name) <= 4 and not re.search(r"[aeiou]", name)
+
+
+def flutter_kind(route):
+    if is_noise_route(route):
+        return "疑似混淆路由"
+    low = route.lower()
+    for kind, keys in ROUTE_KINDS:
+        if any(k in low for k in keys):
+            return kind
+    return "Flutter 页面"
+
+
 def build_map(info):
     pkg_short = info["package"].split(".")[-1]
     modules = []
@@ -106,14 +136,17 @@ def build_map(info):
             kind = "原生页面"
         modules.append({"name": short, "entry": cls, "type": "activity", "kind": kind})
     for route in info.get("routes", []):
-        modules.append({"name": route.strip("/").split("/")[0] or route, "entry": route,
-                        "type": "flutter_route", "kind": "Flutter 页面"})
+        # Flutter 路由必须保留完整路径做名字，只取首段会把 /pay/plans、/pay/orders 合并丢失
+        modules.append({"name": route.strip("/") or route, "entry": route,
+                        "type": "flutter_route", "kind": flutter_kind(route)})
 
     features, seen = [], set()
     for m in modules:
-        if m["name"] in seen:
+        if m["entry"] in seen:
             continue
-        seen.add(m["name"])
+        if m.get("kind") == "疑似混淆路由":
+            continue
+        seen.add(m["entry"])
         features.append({
             "name": m["name"],
             "where": f"{pkg_short} > {m['entry']}",

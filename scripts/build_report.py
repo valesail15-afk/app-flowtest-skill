@@ -40,6 +40,12 @@ header p{margin:0;color:#B7C8C3;font-size:14px}
 .cov .st-blocked{color:#9A4718;font-weight:700}
 .cov .st-failed{color:#992019;font-weight:700}
 .cov .st-untested{color:#78868F;font-weight:700}
+.cmp{width:100%;border-collapse:collapse;margin-top:16px;font-size:12.5px}
+.cmp th,.cmp td{border:1px solid #2C3E46;padding:6px 10px;text-align:left;color:#C9D9D4}
+.cmp th{background:#16262D;color:#8DB1A7;font-weight:600}
+.cmp td b{color:#EAF2EF}
+.fixedc{border-left:4px solid var(--accent)}
+.fixedc .sym b{color:var(--accent)}
 nav{position:sticky;top:0;z-index:9;background:rgba(251,250,247,.95);backdrop-filter:blur(6px);border-bottom:1px solid var(--rule);padding:10px 0}
 nav .wrap{display:flex;gap:8px;flex-wrap:wrap}
 nav a{font-size:12.5px;padding:4px 10px;border:1px solid var(--rule);border-radius:999px;color:#3E4C56;background:#fff}
@@ -291,7 +297,7 @@ def resolve(root, p):
     return os.path.normpath(os.path.join(root, p))
 
 
-def card_html(root, item, origin, shot_count):
+def card_html(root, item, origin, shot_count, cls="card problem"):
     imgs = []
     for p in item.get("images", []):
         full = resolve(root, p)
@@ -308,7 +314,7 @@ def card_html(root, item, origin, shot_count):
     if foot:
         foot = f'<span>{html.escape(str(foot))}</span>'
     return (
-        f'<article class="card problem" data-origin="{origin}">'
+        f'<article class="{cls}" data-origin="{origin}">'
         f'<div class="top"><div class="path">{html.escape(item.get("path", ""))}</div>'
         f'<h3>{html.escape(item.get("title", ""))}</h3>'
         f'<p class="sym">{md_bold(item.get("desc", ""))}</p>{evi}</div>'
@@ -326,7 +332,7 @@ def main():
     a = ap.parse_args()
 
     root = os.path.abspath(a.run)
-    with io.open(a.issues, encoding="utf-8") as f:
+    with io.open(a.issues, encoding="utf-8-sig") as f:
         data = json.load(f)
 
     app = data.get("app", {})
@@ -335,6 +341,18 @@ def main():
                   ("测试日期", app.get("date", ""))]
     meta = "".join(f"<span>{html.escape(k)} <b>{html.escape(str(v))}</b></span>" for k, v in meta_items if v)
     meta += '<span id="meta-count"></span>'
+
+    compare = data.get("compare") or []
+    cmp_html = ""
+    if compare:
+        rows = "".join(
+            f'<tr><th>{html.escape(str(c.get("label", "")))}</th>'
+            f'<td>{md_bold(c.get("prev", "") or "—")}</td>'
+            f'<td>{md_bold(c.get("now", "") or "—")}</td></tr>'
+            for c in compare
+        )
+        cmp_html = ('<table class="cmp"><tr><th>对比项</th><th>上一轮</th><th>本轮</th></tr>'
+                    + rows + '</table>')
 
     sections = {s.get("id"): s for s in data.get("sections", [])}
     for sid in ["c1", "c2", "c3"]:
@@ -352,6 +370,14 @@ def main():
             f'<section id="{sid}"><h2>{html.escape(s.get("title", ""))} <small id="hd-{sid}"></small></h2>'
             f'<div class="grid">{cards}</div></section>'
         )
+
+    fixed_items = data.get("fixed", [])
+    fixed_html = ""
+    if fixed_items:
+        cards = "".join(card_html(root, item, "fixed", 0, cls="card fixedc") for item in fixed_items)
+        fixed_html = (f'<section id="fixed"><h2>已修复 <small>{len(fixed_items)} 项 · 本轮复测确认</small></h2>'
+                      f'<div class="grid">{cards}</div></section>')
+        nav_links.append(f'<a href="#fixed">已修复（{len(fixed_items)}）</a>')
 
     ok_html = ""
     ok_items = data.get("ok", [])
@@ -427,6 +453,7 @@ def main():
     <h1>{html.escape(data.get("title", ""))}</h1>
     <p>{html.escape(data.get("subtitle", ""))}</p>
     <div class="meta">{meta}</div>
+    {cmp_html}
   </div>
 </header>
 <nav><div class="wrap">{"".join(nav_links)}</div></nav>
@@ -434,6 +461,7 @@ def main():
   {note_html}
   {cov_html}
   {"".join(body_sections)}
+  {fixed_html}
   {ok_html}
 </div>
 <footer><div class="wrap">每一步均有截图与页面快照留证，截图内嵌在本文件中，可离线查看。勾选状态保存在本机浏览器。</div></footer>
